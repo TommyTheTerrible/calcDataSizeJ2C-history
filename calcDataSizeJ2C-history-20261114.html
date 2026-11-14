@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>calcDataSizeJ2C over time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f5f4f1;
+  --surface-1: #fcfcfb;
+  --surface-2: #f0efec;
+  --border: #e2e1dc;
+  --grid: #e9e8e4;
+  --axis: #b9b8b2;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7974;
+  --accent: #2a78d6;
+  --code-bg: #f3f2ee;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6;
+  --band: rgba(42,120,214,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #121211; --surface-1: #1a1a19; --surface-2: #242422; --border: #33332f;
+    --grid: #2a2a27; --axis: #5b5a55; --text-primary: #f0efec; --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86; --accent: #3987e5; --code-bg: #20201e;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #0ca30c; --s7: #9085e9; --band: rgba(57,135,229,0.10);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #121211; --surface-1: #1a1a19; --surface-2: #242422; --border: #33332f;
+  --grid: #2a2a27; --axis: #5b5a55; --text-primary: #f0efec; --text-secondary: #c3c2b7;
+  --text-muted: #8f8e86; --accent: #3987e5; --code-bg: #20201e;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #0ca30c; --s7: #9085e9; --band: rgba(57,135,229,0.10);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--text-primary);
+  font: 15px/1.55 "IBM Plex Sans", system-ui, sans-serif; }
+code, pre, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+a { color: var(--accent); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header h1 { font-size: 28px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+header h1 code { font-weight: 500; overflow-wrap: anywhere; }
+header p { margin: 0; color: var(--text-secondary); max-width: 820px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 20px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; margin-top: 24px; }
+.ctl { display: flex; flex-direction: column; gap: 4px; }
+.ctl > span { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
+.seg button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--text-secondary); padding: 6px 11px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); font-weight: 600; }
+select, input[type=number] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); color: var(--text-primary); }
+input[type=number] { width: 78px; }
+.custom { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.chart-head h2 { font-size: 17px; margin: 0; font-weight: 600; }
+.chart-head .sub { color: var(--text-muted); font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 4px; font-size: 13px; color: var(--text-secondary); }
+.legend button { font: inherit; display: inline-flex; align-items: center; gap: 7px; background: none; border: 0; padding: 2px 0; color: inherit; cursor: pointer; }
+.legend button[aria-pressed="false"] { opacity: 0.38; }
+.legend i { display: inline-block; width: 16px; height: 2px; border-radius: 1px; }
+#chart { position: relative; }
+#chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tick text, .axis-label { fill: var(--text-muted); font-size: 11px; }
+.endlabel { font-size: 11px; fill: var(--text-secondary); }
+.revnum { font-size: 10px; fill: var(--text-muted); font-family: "IBM Plex Mono", monospace; }
+#tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); padding: 10px 12px; font-size: 12px; min-width: 210px; display: none; z-index: 5; }
+#tip .t-title { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+#tip .t-date { color: var(--text-muted); margin-bottom: 6px; }
+#tip .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+#tip .row b { font-variant-numeric: tabular-nums; color: var(--text-primary); font-weight: 600; }
+#tip .row span { color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+#tip .row i { width: 12px; height: 2px; display: inline-block; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+thead th { color: var(--text-muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--surface-1); }
+td { font-variant-numeric: tabular-nums; }
+td.chg { color: var(--text-muted); font-size: 11px; }
+.tbl-scroll { overflow-x: auto; }
+.revs { display: grid; gap: 14px; margin-top: 14px; }
+details.rev { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); }
+details.rev summary { cursor: pointer; list-style: none; padding: 14px 16px; display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: baseline; }
+details.rev summary::-webkit-details-marker { display: none; }
+.badge { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; text-align: center; padding: 1px 0; }
+.rev-title { font-weight: 600; }
+.rev-meta { color: var(--text-muted); font-size: 12px; text-align: right; }
+.rev-body { padding: 0 16px 16px 62px; color: var(--text-secondary); }
+.rev-body p { margin: 0 0 10px; }
+.rev-body ul { margin: 0 0 10px; padding-left: 18px; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 12px; line-height: 1.5; color: var(--text-primary); margin: 8px 0 0; }
+.btn { font: inherit; font-size: 12px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.note { font-size: 13px; color: var(--text-muted); margin-top: 10px; }
+h2.section { font-size: 19px; margin: 40px 0 0; font-weight: 600; }
+footer { margin-top: 40px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 720px) { .rev-body { padding-left: 16px; } details.rev summary { grid-template-columns: 30px 1fr; } .rev-meta { grid-column: 2; text-align: left; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><code>LLImageJ2C::calcDataSizeJ2C</code> over time</h1>
+  <p>How many bytes Firestorm asks for when it fetches a JPEG2000 texture at a given discard level. These are the estimates from each major rewrite of the function on the <a href="https://github.com/FirestormViewer/phoenix-firestorm">phoenix-firestorm</a> <code>master</code> branch, from the 2007 Linden Lab original to today. Every value is computed live in your browser by JavaScript ports that match the original C++ bit-for-bit.</p>
+</header>
+
+<div class="controls" role="group" aria-label="Chart options">
+  <div class="ctl"><span>Discard level</span>
+    <div class="seg" id="discardSeg"></div></div>
+  <div class="ctl"><span>Components</span>
+    <div class="seg" id="compSeg"></div></div>
+  <div class="ctl"><span>Rate</span>
+    <select id="rateSel">
+      <option value="0.125" selected>1/8 (default)</option>
+      <option value="0.25">1/4</option>
+      <option value="0.0625">1/16</option>
+    </select></div>
+  <div class="ctl"><span>Timeline</span>
+    <div class="seg" id="xSeg"><button data-v="rev" aria-pressed="true">By revision</button><button data-v="time" aria-pressed="false">Calendar</button></div></div>
+  <div class="ctl"><span>Y scale</span>
+    <div class="seg" id="ySeg"><button data-v="log" aria-pressed="true">Log</button><button data-v="lin" aria-pressed="false">Linear</button></div></div>
+  <div class="ctl"><span>2026 LL split</span>
+    <div class="seg" id="splitSeg"><button data-v="kdu" aria-pressed="true">KDU</button><button data-v="oj" aria-pressed="false">OpenJPEG</button></div></div>
+  <div class="ctl"><span>Custom size</span>
+    <div class="custom"><input type="number" id="cw" min="1" max="4096" value="1024" aria-label="Custom width"> × <input type="number" id="ch" min="1" max="4096" value="256" aria-label="Custom height"></div></div>
+</div>
+
+<section class="card">
+  <div class="chart-head">
+    <h2 id="chartTitle">Estimated bytes requested</h2>
+    <span class="sub" id="chartSub"></span>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div id="chart"><div id="tip" role="status" aria-live="polite"></div></div>
+  <p class="note">Step chart: each value holds until the next rewrite lands on Firestorm <code>master</code>. The dashed, shaded step at the end is the proposed version, which isn’t in the repository. Hover (or focus the chart and use ← →) to read every resolution at that point. Numbered ticks match the revision list below.</p>
+</section>
+
+<h2 class="section">Table view</h2>
+<section class="card tbl-scroll">
+  <table id="tbl"></table>
+</section>
+
+<h2 class="section">Revisions</h2>
+<p class="note" style="margin-top:6px">Dates are when the change reached Firestorm <code>master</code>; authored dates (often upstream in <a href="https://github.com/secondlife/viewer">secondlife/viewer</a>) are in each entry. Expand an entry for what changed and its JavaScript port.</p>
+<div class="revs" id="revs"></div>
+
+<h2 class="section">All JavaScript ports</h2>
+<section class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="note" style="margin:0">One self-contained file. Works in the browser (<code>window.CalcDataSizeJ2C</code>) or Node (<code>require()</code>).</span>
+    <button class="btn" id="copyAll">Copy</button>
+  </div>
+  <pre id="allSrc" style="max-height:420px"></pre>
+</section>
+
+<footer>Source: git history of <code>indra/llimage/llimagej2c.cpp</code>, <code>indra/llkdu/llimagej2ckdu.cpp</code> and <code>indra/llimagej2coj/llimagej2coj.cpp</code> in FirestormViewer/phoenix-firestorm, master at 6759a401ee (2026-11-14). Constants: FIRST_PACKET_SIZE 600, MAX_BLOCK_SIZE 64, MIN_LAYER_SIZE 2000, TextureNewByteRange on.</footer>
+</div>
+
+<script id="estimators">
+/*
+ * JavaScript ports of LLImageJ2C::calcDataSizeJ2C()
+ * (indra/llimage/llimagej2c.cpp, FirestormViewer/phoenix-firestorm)
+ *
+ * Each function reproduces one major revision of the C++ estimator bit-for-bit,
+ * including 32-bit float (F32) rounding, integer truncation and S32 integer
+ * division. Verified against the original C++ bodies, compiled from the git
+ * history, across every combination of a 18x18 dimension grid, 1-4 components,
+ * discard levels 0-5 and several compression rates.
+ *
+ * Signature (same as C++):
+ *   fn(w, h, comp, discard_level, rate = 1/8) -> estimated bytes (integer)
+ *
+ * Constants (llimage.h):
+ *   FIRST_PACKET_SIZE = 600   (calcHeaderSizeJ2C())
+ *   MAX_BLOCK_SIZE    = 64
+ *   MIN_LAYER_SIZE    = 2000
+ *   DEFAULT_COMPRESSION_RATE = 1/8
+ * TextureNewByteRange (settings.xml) defaults to TRUE, which the 2012 and
+ * 2026-KDU versions consult.
+ */
+(function (root) {
+  'use strict';
+
+  const f = Math.fround;                 // emulate C++ float (F32)
+  const trunc = (x) => Math.trunc(x);    // (S32) cast of a float
+  const idiv = (a, b) => Math.trunc(a / b); // C++ S32 integer division
+  const llmax = Math.max;
+  const llclamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  // std::llround: round half away from zero
+  const llround = (x) => (x < 0 ? -Math.round(-x) : Math.round(x));
+
+  const FIRST_PACKET_SIZE = 600;
+  const MAX_BLOCK_SIZE = 64;
+  const MIN_LAYER_SIZE = 2000;
+  const DEFAULT_RATE = 1 / 8;
+  const calcHeaderSizeJ2C = () => FIRST_PACKET_SIZE;
+
+  // ---------------------------------------------------------------------------
+  // 1. Original linear estimate (Linden Lab open-source import, 2007)
+  //    bytes = (w >> d) * (h >> d) * comp * rate, floor at the header size.
+  // ---------------------------------------------------------------------------
+  function v2007_linear(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    rate = f(rate);
+    if (rate <= 0) rate = f(0.125);
+    while (discard_level > 0) {
+      if (w < 1 || h < 1) break;
+      w >>= 1;
+      h >>= 1;
+      discard_level--;
+    }
+    let bytes = trunc(f(f(w * h * comp) * rate));
+    return llmax(bytes, calcHeaderSizeJ2C());
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. SH-3060 "new byte range" (Merov Linden, THX-1138 KDU work, Apr 2012)
+  //    sqrt(area) * comp * rate * 1000 / layer_factor, used only when smaller
+  //    than the old linear value (TextureNewByteRange = true).
+  // ---------------------------------------------------------------------------
+  function v2012_sqrtLayerFactor(w, h, comp, discard_level, rate = DEFAULT_RATE, useNewByteRange = true) {
+    rate = f(rate);
+    let nb_layers = 1;
+    const surface = w * h;
+    let s = 64 * 64;
+    while (surface > s) { nb_layers++; s *= 4; }
+    const layer_factor = f(3.0 * (7 - llclamp(nb_layers, 1, 6)));
+
+    w >>= discard_level;
+    h >>= discard_level;
+    w = llmax(w, 1);
+    h = llmax(h, 1);
+
+    const new_bytes = trunc(f(f(f(f(f(Math.sqrt(f(w * h))) * f(comp)) * rate) * f(1000)) / layer_factor));
+    const old_bytes = trunc(f(f(w * h * comp) * rate));
+    let bytes = (useNewByteRange && new_bytes < old_bytes) ? new_bytes : old_bytes;
+    return llmax(bytes, calcHeaderSizeJ2C());
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. Pyramid-base estimate (TommyTheTerrible, PR #2032, Jul 16 2024)
+  //    Sum 64x64 * 4^n layers covering the image, bits = area*comp*8*rate.
+  // ---------------------------------------------------------------------------
+  function v2024a_pyramid(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    rate = f(rate);
+    const precision = 8;
+    let nb_layers = 1;
+    const surface = w * h;
+    let s = 64 * 64;
+    let totalbytes = trunc(f(f(s * comp * precision) * rate));
+    while (surface > s) {
+      if (nb_layers <= (5 - discard_level))
+        totalbytes += trunc(f(f(s * comp * precision) * rate));
+      nb_layers++;
+      s *= 4;
+    }
+    totalbytes = idiv(totalbytes, 8);
+    totalbytes += calcHeaderSizeJ2C();
+    return llmax(totalbytes, calcHeaderSizeJ2C());
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Pyramid, always 4 components (PR #2073, Jul 20 2024)
+  // ---------------------------------------------------------------------------
+  function v2024b_pyramid4c(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    rate = f(rate);
+    const precision = 8, max_components = 4;
+    let nb_layers = 1;
+    const surface = w * h;
+    let s = 64 * 64;
+    let totalbytes = trunc(f(f(s * max_components * precision) * rate));
+    while (surface > s) {
+      if (nb_layers <= (5 - discard_level))
+        totalbytes += trunc(f(f(s * max_components * precision) * rate));
+      nb_layers++;
+      s *= 4;
+    }
+    totalbytes = idiv(totalbytes, 8);
+    totalbytes += calcHeaderSizeJ2C();
+    return totalbytes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. "Better 2k support" block walk (PR #2406, Aug 24 2024)
+  //    Initial block area scaled by max_dim/64/4; first layer uncompressed.
+  //    (Images whose largest side is < 256 get block_area = 0 -> undersized.)
+  // ---------------------------------------------------------------------------
+  function v2024c_blockWalk2k(w, h, comp, discard_level, rate = DEFAULT_RATE, _fixUndersized = false) {
+    rate = f(rate);
+    const precision = 8, max_components = 4;
+    const width = (w > 0) ? w : 2048;
+    const height = (h > 0) ? h : 2048;
+    const max_dimension = llmax(width, height);
+    let block_area = MAX_BLOCK_SIZE * MAX_BLOCK_SIZE;
+    let ratio = idiv(idiv(max_dimension, MAX_BLOCK_SIZE), max_components);
+    if (_fixUndersized) ratio = llmax(ratio, 1);
+    block_area *= ratio;
+    let totalbytes = block_area * max_components * precision; // no rate on first layer
+    let block_layers = 1;
+    while (block_layers < 6) {
+      if (block_layers <= (5 - discard_level))
+        totalbytes += trunc(f(f(block_area * max_components * precision) * rate));
+      block_layers++;
+      block_area *= 4;
+    }
+    totalbytes = idiv(totalbytes, 8);
+    totalbytes += calcHeaderSizeJ2C();
+    return totalbytes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. Same, with undersized-block fix (PR #2525, Sep 9 2024)
+  // ---------------------------------------------------------------------------
+  function v2024d_blockWalkFixed(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    return v2024c_blockWalk2k(w, h, comp, discard_level, rate, true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 7. log2-based layer count, MIN_LAYER_SIZE start (PRs #4018/#4020, May 2025)
+  //    Also the OpenJPEG estimator in the short-lived 2026 split.
+  // ---------------------------------------------------------------------------
+  function v2025a_log2Layers(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    rate = f(rate);
+    const precision = 8, max_components = 4;
+    const width = (w > 0) ? w : 2048;
+    const height = (h > 0) ? h : 2048;
+    const max_dimension = llmax(width, height);
+    let block_area = MAX_BLOCK_SIZE * MAX_BLOCK_SIZE;
+    const l2 = f(f(Math.log2(f(max_dimension))) - f(Math.log2(MAX_BLOCK_SIZE)));
+    const max_layers = llmax(llround(l2), 4);
+    block_area *= llmax(max_layers, 1);
+    let totalbytes = MIN_LAYER_SIZE * max_components * precision;
+    let block_layers = 0;
+    while (block_layers <= max_layers) {
+      if (block_layers <= (5 - discard_level))
+        totalbytes += trunc(f(f(block_area * max_components * precision) * rate));
+      block_layers++;
+      block_area *= 4;
+    }
+    totalbytes = idiv(totalbytes, 8);
+    totalbytes += calcHeaderSizeJ2C();
+    return totalbytes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. Firestorm FIRE-35987 (Beq, Oct 10 2025; macOS/Linux build fix Oct 12)
+  //    "7.1.11 basis" surface walk in 64-bit, extra layers for long-thin
+  //    textures, unknown size -> discard-5 estimate only. Current on master.
+  // ---------------------------------------------------------------------------
+  function v2025b_fsBeq(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    const precision = 8, max_components = 4, hard_cap = 12;
+    const base_layer_area = MAX_BLOCK_SIZE * MAX_BLOCK_SIZE;
+    const bits_per_tile = max_components * precision;
+    const discard_layers = Math.max(5 - discard_level, 0);
+    const rate64 = f(rate); // F32 widened to double
+    const header_bytes = calcHeaderSizeJ2C();
+    const scaled_bits = (layer_area) => llround(layer_area * bits_per_tile * rate64);
+
+    let total_bits = 0;
+    if (w <= 0 || h <= 0) {
+      total_bits = scaled_bits(base_layer_area);
+    } else {
+      const surface = w * h;
+      let layer_area = base_layer_area;
+      let nb_layers = 1;
+      total_bits = scaled_bits(layer_area);
+      while (surface > layer_area && nb_layers < hard_cap) {
+        if (nb_layers <= discard_layers) total_bits += scaled_bits(layer_area);
+        ++nb_layers;
+        layer_area *= 4;
+      }
+      const max_dimension = Math.max(w, h);
+      const ratio = max_dimension > 0 ? f(f(max_dimension) / f(MAX_BLOCK_SIZE)) : 0;
+      const dimension_layers = ratio > 0
+        ? Math.max(Math.floor(f(Math.log2(ratio))) + 1, 1)
+        : 1;
+      if (dimension_layers > nb_layers) {
+        let extra = Math.min(dimension_layers, hard_cap) - nb_layers;
+        while (extra-- > 0) {
+          if (nb_layers <= discard_layers) total_bits += scaled_bits(layer_area);
+          ++nb_layers;
+          layer_area *= 4;
+        }
+      }
+    }
+    let est = Math.trunc(total_bits / 8) + header_bytes;
+    return llclamp(est, 0, 2147483647);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 9. Linden Lab per-decoder split (Geenz, May 19-20 2026; reverted Jul 22 2026)
+  //    KDU builds (Firestorm releases) used the 2012 formula with a 2048
+  //    fallback for unknown size; OpenJPEG builds used v2025a_log2Layers.
+  // ---------------------------------------------------------------------------
+  function v2026_kdu(w, h, comp, discard_level, rate = DEFAULT_RATE, useNewByteRange = true) {
+    rate = f(rate);
+    let width = (w > 0) ? w : 2048;
+    let height = (h > 0) ? h : 2048;
+    let nb_layers = 1;
+    const surface = width * height;
+    let s = MAX_BLOCK_SIZE * MAX_BLOCK_SIZE;
+    while (surface > s) { nb_layers++; s *= 4; }
+    const layer_factor = f(3.0 * (7 - llclamp(nb_layers, 1, 6)));
+    width >>= discard_level;
+    height >>= discard_level;
+    width = llmax(width, 1);
+    height = llmax(height, 1);
+    const new_bytes = trunc(f(f(f(f(f(Math.sqrt(f(width * height))) * f(comp)) * rate) * f(1000)) / layer_factor));
+    const old_bytes = trunc(f(f(width * height * comp) * rate));
+    const bytes = (useNewByteRange && new_bytes < old_bytes) ? new_bytes : old_bytes;
+    return llmax(bytes, calcHeaderSizeJ2C());
+  }
+  const v2026_openjpeg = v2025a_log2Layers;
+
+  // ---------------------------------------------------------------------------
+  // 10. PROPOSED (2026-11-14) - starting point for a new estimator.
+  //     Currently an exact copy of v2024b_pyramid4c (PR #2073, Jul 2024):
+  //     pyramid sum from 64x64, x4 area per level, 4 components assumed.
+  //     Edit this function to try out changes; the chart picks it up as-is.
+  // ---------------------------------------------------------------------------
+  function proposed(w, h, comp, discard_level, rate = DEFAULT_RATE) {
+    rate = f(rate);
+    const precision = 8, max_components = 4;
+    let max_discards = 5 + (w > 1024) + (h > 1024);
+    let nb_layers = 1;
+    const surface = w * h;
+    let s = 64 * 64;
+    let components = comp > 0 ? comp : max_components;
+    let totalbytes = trunc(f(f(s * components * precision) * rate));
+    while (surface > s) {
+      if (nb_layers <= (max_discards - discard_level))
+        totalbytes += trunc(f(f(s * components * precision) * rate));
+      nb_layers++;
+      s *= 4;
+    }
+    totalbytes = idiv(totalbytes, 8);
+    // Double the totalbytes for discard 0 requests, since the last layer is about the same size as the rest of the file
+    totalbytes *= (1 + (discard_level == 0));
+    totalbytes += calcHeaderSizeJ2C();
+    return totalbytes;
+  }
+
+  const api = {
+    v2007_linear, v2012_sqrtLayerFactor, v2024a_pyramid, v2024b_pyramid4c,
+    v2024c_blockWalk2k, v2024d_blockWalkFixed, v2025a_log2Layers, v2025b_fsBeq,
+    v2026_kdu, v2026_openjpeg, proposed,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.CalcDataSizeJ2C = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+<script>
+(function () {
+'use strict';
+const E = window.CalcDataSizeJ2C;
+const GH = 'https://github.com/FirestormViewer/phoenix-firestorm/commit/';
+
+// ---- Revision catalogue -------------------------------------------------
+const REVS = {
+  r1: { who: 'James Cook', n: 1, title: 'Linear estimate (original)', fn: 'v2007_linear',
+        authored: '2007-01-02', author: 'Linden Lab (James Cook import)', commits: [['420b91db29485df39fd6e724e782c449158811cb', 'Initial open-source import']],
+        usesComp: true,
+        what: ['Halve width and height once per discard level, then <code>bytes = w × h × comp × rate</code>.',
+               'Floor at the 600-byte header (<code>FIRST_PACKET_SIZE</code>).',
+               'With rate 1/8 this is simply an eighth of the raw pixel bytes at that resolution.'] },
+  r2: { who: 'Merov Linden', n: 2, title: 'SH-3060 “new byte range” (THX-1138)', fn: 'v2012_sqrtLayerFactor',
+        authored: '2012-04-02 → 2012-04-13', author: 'Merov Linden', commits: [['df09fd8e8b5b73330e4942c2cb218a216d7aca99', 'Preliminary implementation'], ['adf5b5c1efaed30dc043652b174d76c9088f4b18', 'Final pull from viewer-thx1138'], ['e757189f8d1994fd9dfb9466b50898ce1b1f11b3', 'Merge LL 3.3.3 to FS LGPL']],
+        usesComp: true,
+        what: ['Counts quality layers from the full-size surface (one per 4× area above 64×64), giving <code>layer_factor = 3 × (7 − layers)</code>.',
+               '<code>new = √(w×h) × comp × rate × 1000 / layer_factor</code> at the discarded size; used only when smaller than the old linear value (TextureNewByteRange, default on).',
+               'Grows with the square root of area instead of area, so large textures fetch far less. Intermediate commits from 2–6 April 2012 (a fixed /7 divisor, no “smaller-of” rule) never reached Firestorm and aren’t charted.'] },
+  r3: { who: 'TommyTheTerrible', n: 3, title: 'Pyramid-base estimate', fn: 'v2024a_pyramid',
+        authored: '2024-07-16', author: 'TommyTheTerrible (PR #2032)', commits: [['2f83b0aed2ad123b86faad5b4cb1b55abc0a3a85', 'Update calcDataSizeJ2C to pyramid-base file size estimation'], ['0a83a1e6b7fb0acffa704eaf9a48085c0a3961a0', 'Firestorm merge']],
+        usesComp: true,
+        what: ['Sums a resolution pyramid: 64×64, then ×4 area per level until it covers the image, counting levels up to <code>5 − discard</code>.',
+               'Each level contributes <code>area × comp × 8 bits × rate</code>; total converted to bytes plus the 600-byte header.',
+               'The old formulas are still computed but their result is discarded. A clean-up two days later (6535ce51fd) removed them without changing results.'] },
+  r4: { who: 'TommyTheTerrible', n: 4, title: 'Pyramid, always four components', fn: 'v2024b_pyramid4c',
+        authored: '2024-07-20', author: 'TommyTheTerrible (PR #2073)', commits: [['bffd4a12b8e6677d8cd8bec2e38909e5200b69dd', 'calcDataSizeJ2C adjusted to use maximum possible components'], ['e17c906698f17b6ce09154630c45ca18745b1414', 'Firestorm merge']],
+        usesComp: false,
+        what: ['Same pyramid, but assumes 4 components (RGB + alpha) regardless of the image, so 3-channel textures are no longer under-fetched.'] },
+  r5: { who: 'TommyTheTerrible', n: 5, title: 'Block walk for 2K textures', fn: 'v2024c_blockWalk2k',
+        authored: '2024-08-24', author: 'TommyTheTerrible (PR #2406)', commits: [['17f515cd3e4239d3c6e1958d998e455a8300da90', 'Update LLImageJ2C::calcDataSizeJ2C for better 2k image support'], ['9573cc8e00e4561dce3afe00177d017f13cbeef3', 'Firestorm merge']],
+        usesComp: false,
+        what: ['Starting block area is 64×64 scaled by <code>max_dim / 64 / 4</code>; always walks five layers (×4 each).',
+               'The first layer is added <em>without</em> the compression rate, which makes estimates much larger.',
+               'Unknown dimensions assume 2048. Bug: anything whose longest side is under 256 gets a zero block area and only the 600-byte header.'] },
+  r6: { who: 'TommyTheTerrible', n: 6, title: 'Block walk, undersized-block fix', fn: 'v2024d_blockWalkFixed',
+        authored: '2024-09-09', author: 'TommyTheTerrible (PR #2525)', commits: [['2f692fbac36117e1b3c5f2ec214fd188c7e73da7', 'Update calcDataSizeJ2C to stop undersized blocks'], ['64b6587eec6a632275345ad6f56886b716867f33', 'Firestorm merge']],
+        usesComp: false,
+        what: ['Clamps the <code>max_dim / 64 / 4</code> multiplier to at least 1, so small textures get real estimates again.'] },
+  r7: { who: 'TommyTheTerrible', n: 7, title: 'log₂ layer count from MIN_LAYER_SIZE', fn: 'v2025a_log2Layers',
+        authored: '2025-05-05', author: 'TommyTheTerrible (PRs #4018, #4020)', commits: [['ac5d59b9392dbd107ff6e8ac05ab8a3cd48fd694', 'calcDataSizeJ2C Adjust curve for more than 6 layers'], ['1293aaf6942e2e492880607f707c3cf9aaaeee8d', 'Firestorm merge (Oct 2025)']],
+        usesComp: false,
+        what: ['Layer count = <code>round(log₂ max_dim − 6)</code>, minimum 4; block area multiplied by that count.',
+               'Starts from <code>MIN_LAYER_SIZE × 4 × 8</code> bits (an 8,600-byte floor) and walks layers 0…max_layers.',
+               'Large for big textures: a 2048² image estimates ~14 MB at discard 0, more than its raw RGBA size. Reached Firestorm master five months after it was authored.'] },
+  r8: { who: 'Beq', n: 8, title: 'Firestorm FIRE-35987 (current)', fn: 'v2025b_fsBeq',
+        authored: '2025-10-10 (build fix 2025-10-12)', author: 'Beq Janus', commits: [['2ab023156b643d14af4f89e91a3e3ed58b152747', '[FIRE-35987] Slow texture loading (at least partial fix)'], ['31fe395624648b35e1edad10d435e08f21764526', 'Firestorm merge'], ['24e526a11157073eb0c511bf8858934644d65e52', 'macOS/Linux compile fix (same results)']],
+        usesComp: false,
+        what: ['A Firestorm-only rewrite that returns to the July 2024 surface walk (four components) to stop over-fetching.',
+               'Uses 64-bit maths and a 12-layer sanity cap. Long thin textures (e.g. 2048×256) get extra layers based on their longest side.',
+               'Unknown dimensions return a small discard-5 estimate instead of assuming a 2048² texture.'] },
+  r9: { who: 'Geenz', n: 9, title: 'LL per-decoder split (reverted)', fn: 'v2026_kdu',
+        authored: '2026-05-19 → 2026-05-20', author: 'Jonathan “Geenz” Goodman', commits: [['1ee317bcb7a5988658612a69a7bd52fb1a9e37c7', 'Bring back the pre-aug 2024 byte estimation'], ['57048769db20f5e84834c8c6dd15466083bd7585', 'Move the KDU data size estimate into j2ckdu'], ['4c0eade3cceae3d94e8cd41b649796543e8765f2', 'Firestorm merge'], ['55e94847b4270d7f71016fe651800ef9e43b4bc5', 'LL revert (22 Jul 2026)'], ['e3b679978eb50ef00af49e5374892ed6e9f7d760', 'Firestorm merge of revert']],
+        usesComp: true,
+        what: ['The function dispatches to the decoder: KDU (used by Firestorm release builds) gets the 2012 √area formula with a 2048 fallback for unknown size; OpenJPEG gets the May 2025 log₂ estimator. Pick which one the chart shows with the “2026 LL split” control.',
+               'Merged into Firestorm on 21 July 2026; Linden Lab reverted it on 22 July and Firestorm restored the FIRE-35987 version on 27 July.'] },
+  r10: { who: 'Proposed', n: 10, title: 'Proposed (version 4 with adjustments)', fn: 'proposed', proposed: true,
+        authored: '2026-11-14', author: 'TommyTheTerrible', commits: [],
+        usesComp: false,
+        what: ['Not in the repository: a candidate for a new estimator, shown dashed on the chart after today’s date.',
+               'Starts as an exact copy of version 4 (July 2024 pyramid, four components). Edit <code>proposed()</code> in the script to try changes.'] },
+};
+
+// Timeline on Firestorm master: [date reached master, revision]
+const TIMELINE = [
+  ['2007-01-02', 'r1'],
+  ['2012-06-22', 'r2'],
+  ['2024-07-18', 'r3'],
+  ['2024-07-22', 'r4'],
+  ['2024-08-27', 'r5'],
+  ['2024-09-09', 'r6'],
+  ['2025-10-03', 'r7'],
+  ['2025-10-11', 'r8'],
+  ['2026-07-21', 'r9'],
+  ['2026-07-27', 'r8'],
+  ['2026-11-14', 'r10'],
+];
+const END_DATE = '2027-05-14'; // calendar view: show the proposed step for six months past today
+
+const BASE_SERIES = [
+  { id: 'a', w: 64, h: 64, c: 's1' },
+  { id: 'b', w: 128, h: 128, c: 's2' },
+  { id: 'c', w: 256, h: 256, c: 's3' },
+  { id: 'd', w: 512, h: 512, c: 's4' },
+  { id: 'e', w: 1024, h: 1024, c: 's5' },
+  { id: 'f', w: 2048, h: 2048, c: 's6' },
+];
+const state = { discard: 0, comp: 4, rate: 0.125, x: 'rev', y: 'log', split: 'kdu',
+  custom: { id: 'g', w: 1024, h: 256, c: 's7' }, hidden: new Set(['g']), hover: null };
+try { const s = JSON.parse(localStorage.getItem('j2cState') || 'null'); if (s) { Object.assign(state, s, { hidden: new Set(s.hidden || ['g']), hover: null }); } } catch (e) {}
+function save() { try { localStorage.setItem('j2cState', JSON.stringify({ ...state, hidden: [...state.hidden], hover: undefined })); } catch (e) {} }
+
+const series = () => [...BASE_SERIES, state.custom];
+const label = (s) => `${s.w}×${s.h}`;
+function fnFor(revKey) {
+  if (revKey === 'r9' && state.split === 'oj') return E.v2026_openjpeg;
+  return E[REVS[revKey].fn];
+}
+function value(revKey, s) { return fnFor(revKey)(s.w, s.h, state.comp, state.discard, state.rate); }
+const fmt = (b) => b.toLocaleString('en-US');
+function fmtShort(b) {
+  const u = [[1e9, 'GB'], [1e6, 'MB'], [1e3, 'kB']];
+  for (const [d, n] of u) if (b >= d) { const v = b / d; return (v >= 100 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)) + ' ' + n; }
+  return b + ' B';
+}
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim();
+const dayNum = (d) => Date.parse(d + 'T00:00:00Z') / 864e5;
+const prettyDate = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+// ---- Controls ------------------------------------------------------------
+function seg(el, values, labels, get, set) {
+  el.innerHTML = '';
+  values.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.textContent = labels[i]; b.dataset.v = v;
+    b.setAttribute('aria-pressed', String(get() == v));
+    b.onclick = () => { set(v); [...el.children].forEach(c => c.setAttribute('aria-pressed', String(c.dataset.v == String(v)))); save(); render(); };
+    el.appendChild(b);
+  });
+}
+seg(document.getElementById('discardSeg'), [0,1,2,3,4,5], ['0','1','2','3','4','5'], () => state.discard, v => state.discard = +v);
+seg(document.getElementById('compSeg'), [1,3,4], ['1','3','4'], () => state.comp, v => state.comp = +v);
+seg(document.getElementById('xSeg'), ['rev','time'], ['By revision','Calendar'], () => state.x, v => state.x = v);
+seg(document.getElementById('ySeg'), ['log','lin'], ['Log','Linear'], () => state.y, v => state.y = v);
+seg(document.getElementById('splitSeg'), ['kdu','oj'], ['KDU','OpenJPEG'], () => state.split, v => state.split = v);
+const rateSel = document.getElementById('rateSel');
+rateSel.value = String(state.rate); rateSel.onchange = () => { state.rate = +rateSel.value; save(); render(); };
+const cw = document.getElementById('cw'), ch = document.getElementById('ch');
+cw.value = state.custom.w; ch.value = state.custom.h;
+function onCustom() {
+  const w = Math.max(1, Math.min(4096, parseInt(cw.value, 10) || 1));
+  const h = Math.max(1, Math.min(4096, parseInt(ch.value, 10) || 1));
+  state.custom = { ...state.custom, w, h }; state.hidden.delete('g'); save(); render();
+}
+cw.oninput = onCustom; ch.oninput = onCustom;
+
+// ---- Chart ---------------------------------------------------------------
+const chartEl = document.getElementById('chart');
+const tip = document.getElementById('tip');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+
+let geom = null;
+function render() {
+  const W = Math.max(chartEl.clientWidth, 320);
+  const narrow = W < 640;
+  const H = narrow ? 360 : 440;
+  const M = { t: 18, r: narrow ? 64 : 92, b: 58, l: 58 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const visible = series().filter(s => !state.hidden.has(s.id));
+
+  // x positions for each timeline step [x0, x1]
+  const n = TIMELINE.length;
+  let spans;
+  if (state.x === 'rev') {
+    spans = TIMELINE.map((_, i) => [i / n * iw, (i + 1) / n * iw]);
+  } else {
+    const t0 = dayNum(TIMELINE[0][0]), t1 = dayNum(END_DATE);
+    const sx = (d) => (dayNum(d) - t0) / (t1 - t0) * iw;
+    spans = TIMELINE.map((t, i) => [sx(t[0]), sx(i + 1 < n ? TIMELINE[i + 1][0] : END_DATE)]);
+  }
+  // y scale
+  const vals = [];
+  visible.forEach(s => TIMELINE.forEach(t => vals.push(value(t[1], s))));
+  const vmax = Math.max(...vals, 1000), vmin = Math.min(...vals, 600);
+  let y, ticks;
+  if (state.y === 'log') {
+    const lo = Math.pow(10, Math.floor(Math.log10(vmin))), hi = Math.pow(10, Math.ceil(Math.log10(vmax)));
+    y = (v) => ih - (Math.log10(v) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo)) * ih;
+    ticks = []; for (let p = lo; p <= hi; p *= 10) ticks.push(p);
+  } else {
+    const step = niceStep(vmax / 5); const hi = Math.ceil(vmax / step) * step;
+    y = (v) => ih - v / hi * ih;
+    ticks = []; for (let v = 0; v <= hi + 1e-9; v += step) ticks.push(v);
+  }
+
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', tabindex: '0',
+    'aria-label': `Step chart of estimated bytes per revision for ${visible.map(label).join(', ')} at discard level ${state.discard}. Use the table below for exact values.` });
+  const g = el('g', { transform: `translate(${M.l},${M.t})` }, svg);
+
+  // hover band (behind)
+  const band = el('rect', { y: 0, height: ih, fill: cssVar('band'), visibility: 'hidden' }, g);
+
+  // grid + y ticks
+  ticks.forEach(v => {
+    const yy = y(v); if (yy < -1 || yy > ih + 1) return;
+    el('line', { x1: 0, x2: iw, y1: yy, y2: yy, stroke: cssVar('grid'), 'stroke-width': 1 }, g);
+    const t = el('text', { x: -8, y: yy + 4, 'text-anchor': 'end', class: 'tick' }, g); t.textContent = fmtShort(v);
+    t.setAttribute('fill', cssVar('text-muted')); t.setAttribute('font-size', '11');
+  });
+  // revision boundaries + numbers + x labels
+  const lastLabelX = { v: -1e9 };
+  TIMELINE.forEach((t, i) => {
+    const x0 = spans[i][0];
+    if (i > 0) el('line', { x1: x0, x2: x0, y1: 0, y2: ih, stroke: cssVar('grid'), 'stroke-width': 1, 'stroke-dasharray': '2 3' }, g);
+    const mid = (spans[i][0] + spans[i][1]) / 2;
+    const width = spans[i][1] - spans[i][0];
+    if (width >= 14) {
+      const rn = el('text', { x: mid, y: ih + 15, 'text-anchor': 'middle', class: 'revnum' }, g);
+      rn.textContent = REVS[t[1]].n; rn.setAttribute('fill', cssVar('text-muted'));
+    }
+    if (state.x === 'rev' && (!narrow || i % 2 === 0)) {
+      const dl = el('text', { x: mid, y: ih + 31, 'text-anchor': 'middle', class: 'tick' }, g);
+      dl.textContent = REVS[t[1]].proposed ? 'today' : t[0].slice(0, 7); dl.setAttribute('fill', cssVar('text-muted')); dl.setAttribute('font-size', '11');
+    }
+    if (state.x === 'rev' ? (!narrow || i % 2 === 0) : width >= 90) {
+      const wl = el('text', { x: mid, y: ih + (state.x === 'rev' ? 46 : 46), 'text-anchor': 'middle', class: 'who' }, g);
+      wl.textContent = (REVS[t[1]].who === 'TommyTheTerrible' && width < 104) ? 'Tommy' : REVS[t[1]].who; wl.setAttribute('fill', cssVar('text-secondary')); wl.setAttribute('font-size', '10');
+    }
+  });
+  if (state.x === 'time') {
+    const t0 = dayNum(TIMELINE[0][0]), t1 = dayNum(END_DATE);
+    for (let yr = 2008; yr <= 2027; yr += narrow ? 4 : 2) {
+      const xx = (dayNum(yr + '-01-01') - t0) / (t1 - t0) * iw;
+      const dl = el('text', { x: xx, y: ih + 31, 'text-anchor': 'middle', class: 'tick' }, g);
+      dl.textContent = yr; dl.setAttribute('fill', cssVar('text-muted')); dl.setAttribute('font-size', '11');
+      el('line', { x1: xx, x2: xx, y1: ih, y2: ih + 4, stroke: cssVar('axis') }, g);
+    }
+  }
+  el('line', { x1: 0, x2: iw, y1: ih, y2: ih, stroke: cssVar('axis'), 'stroke-width': 1 }, g);
+
+  // series step lines
+  const ends = [];
+  // proposed region shading
+  const pi = TIMELINE.findIndex(t => REVS[t[1]].proposed);
+  if (pi >= 0) {
+    el('rect', { x: spans[pi][0], y: 0, width: spans[pi][1] - spans[pi][0], height: ih, fill: cssVar('surface-2'), opacity: 0.7 }, g);
+    const pl = el('text', { x: (spans[pi][0] + spans[pi][1]) / 2, y: 12, 'text-anchor': 'middle', class: 'tick' }, g);
+    pl.textContent = 'proposed'; pl.setAttribute('fill', cssVar('text-muted')); pl.setAttribute('font-size', '11');
+  }
+  visible.forEach(s => {
+    let d = '', dp = '';
+    TIMELINE.forEach((t, i) => {
+      const yy = y(value(t[1], s));
+      if (REVS[t[1]].proposed) {
+        const prevY = y(value(TIMELINE[i - 1][1], s));
+        dp += `M${spans[i][0]},${prevY}V${yy}H${spans[i][1]}`;
+      } else {
+        d += (i === 0 ? `M${spans[i][0]},${yy}` : `V${yy}`) + `H${spans[i][1]}`;
+      }
+    });
+    el('path', { d, fill: 'none', stroke: cssVar(s.c), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
+    if (dp) el('path', { d: dp, fill: 'none', stroke: cssVar(s.c), 'stroke-width': 2, 'stroke-dasharray': '5 4', 'stroke-linejoin': 'round' }, g);
+    ends.push({ s, y: y(value(TIMELINE[n - 1][1], s)) });
+  });
+  // direct end labels with simple collision nudging
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  ends.forEach(e => {
+    const t = el('text', { x: iw + 8, y: e.y + 4, class: 'endlabel' }, g);
+    t.textContent = label(e.s); t.setAttribute('fill', cssVar('text-secondary')); t.setAttribute('font-size', '11');
+  });
+
+  // hover markers group
+  const marks = el('g', {}, g);
+  const overlay = el('rect', { x: 0, y: 0, width: iw, height: ih, fill: 'transparent', style: 'cursor:crosshair' }, g);
+
+  chartEl.querySelector('svg')?.remove();
+  chartEl.insertBefore(svg, tip);
+  geom = { spans, y, M, iw, ih, band, marks, visible, W };
+
+  const pick = (px) => { for (let i = 0; i < n; i++) if (px < spans[i][1]) return i; return n - 1; };
+  overlay.addEventListener('pointermove', (ev) => {
+    const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width) - M.l;
+    showHover(pick(px));
+  });
+  overlay.addEventListener('pointerleave', hideHover);
+  svg.addEventListener('keydown', (ev) => {
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      const cur = state.hover == null ? (ev.key === 'ArrowRight' ? -1 : n) : state.hover;
+      showHover(Math.max(0, Math.min(n - 1, cur + (ev.key === 'ArrowRight' ? 1 : -1))));
+    } else if (ev.key === 'Escape') hideHover();
+  });
+  svg.addEventListener('blur', hideHover);
+  if (state.hover != null) showHover(state.hover);
+
+  renderLegend(); renderTable();
+  document.getElementById('chartSub').textContent =
+    `discard ${state.discard} · ${state.comp} component${state.comp > 1 ? 's' : ''} · rate ${rateSel.options[rateSel.selectedIndex].text.replace(' (default)', '')}`;
+}
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; }
+
+function showHover(i) {
+  state.hover = i;
+  const { spans, y, M, band, marks, visible, W } = geom;
+  const [x0, x1] = spans[i];
+  band.setAttribute('x', x0); band.setAttribute('width', Math.max(x1 - x0, 2)); band.setAttribute('visibility', 'visible');
+  marks.innerHTML = '';
+  const [date, rk] = TIMELINE[i];
+  const rev = REVS[rk];
+  const rows = visible.map(s => ({ s, v: value(rk, s) })).sort((a, b) => b.v - a.v);
+  rows.forEach(r => {
+    el('circle', { cx: (x0 + x1) / 2, cy: y(r.v), r: 4, fill: cssVar(r.s.c), stroke: cssVar('surface-1'), 'stroke-width': 2 }, marks);
+  });
+  tip.innerHTML = '';
+  const tt = document.createElement('div'); tt.className = 't-title';
+  tt.textContent = `${rev.n}. ${rev.title}` + (rk === 'r9' ? (state.split === 'oj' ? ' — OpenJPEG' : ' — KDU') : '');
+  const td = document.createElement('div'); td.className = 't-date';
+  td.textContent = `${rev.who} · ${prettyDate(date)} → ${i + 1 < TIMELINE.length ? prettyDate(TIMELINE[i + 1][0]) : 'not merged'}`;
+  tip.append(tt, td);
+  rows.forEach(r => {
+    const row = document.createElement('div'); row.className = 'row';
+    const sp = document.createElement('span'); const k = document.createElement('i'); k.style.background = cssVar(r.s.c);
+    sp.append(k, document.createTextNode(label(r.s)));
+    const b = document.createElement('b'); b.textContent = fmt(r.v) + ' B';
+    row.append(sp, b); tip.appendChild(row);
+  });
+  tip.style.display = 'block';
+  const svgEl = chartEl.querySelector('svg'); const scale = svgEl.getBoundingClientRect().width / W;
+  const cx = (M.l + (x0 + x1) / 2) * scale;
+  const tw = tip.offsetWidth;
+  let left = cx + 14; if (left + tw > chartEl.clientWidth) left = cx - tw - 14; if (left < 0) left = 0;
+  tip.style.left = left + 'px'; tip.style.top = (M.t * scale + 4) + 'px';
+}
+function hideHover() { state.hover = null; if (!geom) return; geom.band.setAttribute('visibility', 'hidden'); geom.marks.innerHTML = ''; tip.style.display = 'none'; }
+
+function renderLegend() {
+  const lg = document.getElementById('legend'); lg.innerHTML = '';
+  series().forEach(s => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-pressed', String(!state.hidden.has(s.id)));
+    const k = document.createElement('i'); k.style.background = cssVar(s.c);
+    b.append(k, document.createTextNode(label(s) + (s.id === 'g' ? ' (custom)' : '')));
+    b.onclick = () => { state.hidden.has(s.id) ? state.hidden.delete(s.id) : state.hidden.add(s.id); save(); render(); };
+    lg.appendChild(b);
+  });
+}
+
+function renderTable() {
+  const tbl = document.getElementById('tbl'); tbl.innerHTML = '';
+  const ss = series().filter(s => !state.hidden.has(s.id));
+  const thead = tbl.createTHead(); const hr = thead.insertRow();
+  ['#', 'Revision', 'On master'].concat(ss.map(label)).forEach(h => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
+  const tb = tbl.createTBody();
+  let prev = null;
+  TIMELINE.forEach(([date, rk]) => {
+    const tr = tb.insertRow();
+    const rev = REVS[rk];
+    [String(rev.n), rev.title + (rk === 'r9' ? (state.split === 'oj' ? ' (OpenJPEG)' : ' (KDU)') : ''), date].forEach((t, i) => { const td = tr.insertCell(); td.textContent = t; if (i === 2) td.style.textAlign = 'right'; });
+    const cur = ss.map(s => value(rk, s));
+    cur.forEach((v, j) => {
+      const td = tr.insertCell(); td.textContent = fmt(v);
+      if (prev) {
+        const r = v / prev[j];
+        if (Math.abs(r - 1) > 0.005) { const sm = document.createElement('div'); sm.className = 'chg'; sm.textContent = (r >= 1 ? '×' + r.toFixed(r >= 10 ? 0 : 2) : '÷' + (1 / r).toFixed(1 / r >= 10 ? 0 : 2)); td.appendChild(sm); }
+      }
+    });
+    prev = cur;
+  });
+  const raw = tb.insertRow(); raw.style.color = 'var(--text-muted)';
+  ['', 'Raw uncompressed (reference)', ''].forEach(t => { raw.insertCell().textContent = t; });
+  ss.forEach(s => { const w = Math.max(s.w >> state.discard, 1), h = Math.max(s.h >> state.discard, 1); raw.insertCell().textContent = fmt(w * h * state.comp); });
+}
+
+// ---- Revision list + sources ----------------------------------------------
+function renderRevs() {
+  const box = document.getElementById('revs');
+  const firstDate = {}; TIMELINE.forEach(([d, k]) => { if (!firstDate[k]) firstDate[k] = d; });
+  Object.entries(REVS).forEach(([k, r]) => {
+    const d = document.createElement('details'); d.className = 'rev';
+    const sm = document.createElement('summary');
+    const bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = r.n;
+    const ti = document.createElement('span'); ti.className = 'rev-title'; ti.textContent = r.title;
+    const me = document.createElement('span'); me.className = 'rev-meta'; me.textContent = r.proposed ? `proposed ${prettyDate(firstDate[k])}` : `on master ${prettyDate(firstDate[k])} · ${r.author}`;
+    sm.append(bd, ti, me); d.appendChild(sm);
+    const body = document.createElement('div'); body.className = 'rev-body';
+    const ul = document.createElement('ul'); r.what.forEach(w => { const li = document.createElement('li'); li.innerHTML = w; ul.appendChild(li); }); // static, authored text
+    const p = document.createElement('p'); p.textContent = `${r.proposed ? 'Proposed' : 'Authored'} ${r.authored}. ${r.usesComp ? 'Uses the component count.' : 'Ignores the component count (assumes 4).'}` + (r.commits.length ? ' Commits: ' : '');
+    r.commits.forEach(([h, msg], i) => { const a = document.createElement('a'); a.href = GH + h; a.textContent = h.slice(0, 10); a.title = msg; a.className = 'mono'; p.appendChild(a); p.appendChild(document.createTextNode(` (${msg})` + (i < r.commits.length - 1 ? ', ' : '.'))); });
+    const pre = document.createElement('pre');
+    let src = E[r.fn].toString();
+    if (r.fn === 'v2024d_blockWalkFixed') src += '\n\n// uses:\n' + E.v2024c_blockWalk2k.toString();
+    if (k === 'r9') src += '\n\n// OpenJPEG builds:\nconst v2026_openjpeg = v2025a_log2Layers;';
+    pre.textContent = src;
+    body.append(ul, p, pre); d.appendChild(body); box.appendChild(d);
+  });
+  const all = document.getElementById('estimators').textContent.trim();
+  document.getElementById('allSrc').textContent = all;
+  const btn = document.getElementById('copyAll');
+  btn.onclick = async () => { try { await navigator.clipboard.writeText(all); btn.textContent = 'Copied'; } catch (e) { btn.textContent = 'Select the text to copy'; } setTimeout(() => btn.textContent = 'Copy', 1800); };
+}
+
+renderRevs();
+render();
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 120); });
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+</body>
+</html>
