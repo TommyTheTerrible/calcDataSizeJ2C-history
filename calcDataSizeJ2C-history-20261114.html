@@ -204,6 +204,7 @@ footer { margin-top: 40px; color: var(--text-muted); font-size: 12px; }
   const MAX_BLOCK_SIZE = 64;
   const MIN_LAYER_SIZE = 2000;
   const DEFAULT_RATE = 1 / 8;
+  const MAX_IMAGE_SIZE = 2048;
   const calcHeaderSizeJ2C = () => FIRST_PACKET_SIZE;
 
   // ---------------------------------------------------------------------------
@@ -433,13 +434,13 @@ footer { margin-top: 40px; color: var(--text-muted); font-size: 12px; }
     const precision = 8, max_components = 4;
     let max_discards = 5 + (w > 1024) + (h > 1024);
     let nb_layers = 1;
-    const surface = w * h;
+    let width = (w > 0 && w <= MAX_IMAGE_SIZE) ? w : MAX_IMAGE_SIZE;
+    let height = (h > 0 && h <= MAX_IMAGE_SIZE) ? h : MAX_IMAGE_SIZE;
+    const surface = width * height;
     let s = 64 * 64;
-    let components = comp > 0 ? comp : max_components;
-    let totalbytes = trunc(f(f(s * components * precision) * rate));
-    while (surface > s) {
-      if (nb_layers <= (max_discards - discard_level))
-        totalbytes += trunc(f(f(s * components * precision) * rate));
+    let totalbytes = trunc(f(f(s * max_components * precision) * rate));
+    while (surface > s && nb_layers <= (max_discards - discard_level)) {
+      totalbytes += trunc(f(f(s * max_components * precision) * rate));
       nb_layers++;
       s *= 4;
     }
